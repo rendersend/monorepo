@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      Strict CSP on the viewer chrome.
+
+      The decryption key lives in window.location.hash. Any XSS on this page
+      could read the key and exfiltrate it. The CSP below removes those vectors:
+        - script-src 'self' only — no inline, no eval, no remote scripts
+        - connect-src is restricted to the API origin
+        - default-src 'none' kills everything not explicitly enumerated
+
+      The user-supplied HTML is rendered in a sandboxed iframe (srcdoc) with
+      its own injected CSP — see viewer.ts. The two pages are isolated.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'none';
+        script-src 'self';
+        style-src 'self' 'unsafe-inline';
+        connect-src 'self' http://localhost:8787;
+        img-src 'self' data:;
+        font-src 'self' data:;
+        frame-src 'self' data:;
+        base-uri 'none';
+        form-action 'none';
+      "
+    />
+    <title>Rendersend Viewer</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #fafafa;
+        --fg: #111;
+        --muted: #666;
+        --border: #e5e7eb;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg: #0a0a0a; --fg: #f5f5f5; --muted: #888; --border: #1f2937; }
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); }
+      body {
+        display: flex;
+        flex-direction: column;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      }
+      header {
+        flex: 0 0 auto;
+        padding: 0.5rem 1rem;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 0.875rem;
+      }
+      header .brand { font-weight: 600; }
+      header .meta { color: var(--muted); }
+      .frame {
+        flex: 1 1 auto;
+        border: 0;
+        width: 100%;
+        background: white;
+      }
+      .status {
+        flex: 1 1 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+        text-align: center;
+        color: var(--muted);
+      }
+      .status.error { color: #dc2626; }
+      .status h2 { margin: 0 0 0.5rem; color: var(--fg); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="brand">Rendersend</span>
+      <span class="meta" id="meta">Decrypting…</span>
+    </header>
+    <div class="status" id="status">
+      <div>
+        <h2>Decrypting</h2>
+        <p>Your content is being decrypted in your browser.</p>
+      </div>
+    </div>
+    <script type="module" src="/src/viewer.ts"></script>
+  </body>
+</html>

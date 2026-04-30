@@ -1,0 +1,20 @@
+{
+  "name": "rendersend",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Zero-access encrypted hosting for HTML artifacts",
+  "packageManager": "pnpm@10.33.2",
+  "scripts": {
+    "dev:api": "pnpm --filter @rendersend/api dev",
+    "dev:viewer": "pnpm --filter @rendersend/viewer dev",
+    "dev:mcp": "pnpm --filter @rendersend/mcp dev",
+    "dev": "node --experimental-strip-types scripts/dev.mjs",
+    "build": "pnpm -r build",
+    "share": "pnpm --filter @rendersend/mcp share",
+    "print-mcp-config": "node scripts/print-mcp-config.mjs",
+    "test:e2e": "node --experimental-strip-types scripts/test-e2e.mjs"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}
