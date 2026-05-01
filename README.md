@@ -27,20 +27,24 @@ Zero-access encrypted hosting for HTML artifacts. Encrypt in the browser or CLI,
 ## Repo layout
 
 ```
-packages/
-  api/        Hono HTTP server — stores opaque blobs, handles email-pinned gating
-  viewer/     Vite/React SPA  — decrypts in browser, renders in sandboxed iframe
-  mcp/        MCP server      — exposes share_html tool for Claude Desktop
-  crypto/     Shared crypto   — AES-256-GCM via WebCrypto, runs in Node + browser
-scripts/
-  dev.mjs             Start API + viewer together for local dev
-  build.mjs           Build viewer (Vite) + MCP server (tsup)
-  release.mjs         Assemble release/ directory for VPS deployment
-  test-e2e.mjs        End-to-end test harness (no browser needed)
-  print-mcp-config.mjs  Generate Claude Desktop config snippet
-docs/
-  claude-desktop-setup.md   MCP wiring walkthrough
-  requirements.md           Product requirements
+rendersend/
+├── packages/
+│   ├── api/        Hono HTTP server — stores opaque blobs, handles email-pinned gating
+│   ├── viewer/     Vite/React SPA  — decrypts in browser, renders in sandboxed iframe
+│   ├── mcp/        MCP server      — exposes share_html tool for Claude Desktop
+│   └── crypto/     Shared crypto   — AES-256-GCM via WebCrypto, runs in Node + browser
+├── scripts/
+│   ├── dev.mjs               Start API + viewer together for local dev
+│   ├── build.mjs             Build viewer (Vite) + MCP server (tsup)
+│   ├── release.mjs           Assemble release/ directory for VPS deployment
+│   ├── test-e2e.mjs          End-to-end test harness (no browser needed)
+│   └── print-mcp-config.mjs  Generate Claude Desktop config snippet
+├── docs/
+│   ├── claude-desktop-setup.md   MCP wiring walkthrough
+│   └── requirements.md           Product requirements
+├── package.json          Workspace root — all pnpm scripts live here
+├── pnpm-workspace.yaml
+└── tsconfig.base.json    Shared TS compiler options
 ```
 
 ---
