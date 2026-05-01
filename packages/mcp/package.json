@@ -1,22 +1,30 @@
 {
   "name": "@rendersend/mcp",
   "version": "0.0.1",
-  "private": true,
+  "private": false,
   "type": "module",
+  "description": "Rendersend MCP server — share encrypted HTML from Claude Desktop",
   "bin": {
-    "rendersend-mcp": "./src/index.ts"
+    "rendersend-mcp": "./dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
+    "build": "tsup",
     "dev": "node --experimental-strip-types --watch src/index.ts",
-    "start": "node --experimental-strip-types src/index.ts",
-    "share": "node --experimental-strip-types src/cli-share.ts"
+    "start": "node dist/index.js",
+    "start:dev": "node --experimental-strip-types src/index.ts",
+    "share": "node --experimental-strip-types src/cli-share.ts",
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@rendersend/crypto": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.6.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.6.0"
   }
 }

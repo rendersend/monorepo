@@ -1,12 +1,9 @@
 /**
- * Shared share-html implementation used by both the MCP server and the
- * standalone CLI test harness. Encrypts on the user's machine, uploads
- * the opaque blob to the API, and returns a link with the key in the
- * URL fragment.
+ * Shared share-html implementation used by the MCP server and the CLI.
  *
- * Zero-access invariant: the key never leaves this process except as
- * part of the returned link string. The HTTP request to the API does
- * not include the key in any header, body, or URL component.
+ * Encrypts on the user's machine, uploads opaque ciphertext, returns
+ * a viewer link with the AES key in the URL fragment. The server
+ * never sees the key in either the upload request or the resulting URL.
  */
 import {
   generateKey,
@@ -20,6 +17,9 @@ import {
 export interface ShareOptions {
   apiBase: string;
   viewerBase: string;
+  ownerEmail: string;
+  recipientEmails?: string[] | null;
+  expiresInSeconds?: number;
 }
 
 export interface ShareResult {
@@ -27,6 +27,7 @@ export interface ShareResult {
   id: string;
   expiresAt: number;
   byteLength: number;
+  requiresVerify: boolean;
 }
 
 export async function shareHtml(
@@ -36,15 +37,29 @@ export async function shareHtml(
   if (!html || typeof html !== "string") {
     throw new Error("html must be a non-empty string");
   }
+  if (!opts.ownerEmail || !opts.ownerEmail.includes("@")) {
+    throw new Error("ownerEmail is required and must be a valid email");
+  }
 
   const key = await generateKey();
   const plaintext = encodeUtf8(html);
   const blob = await encrypt(key, plaintext);
   const packed = packBlob(blob);
 
+  const headers: Record<string, string> = {
+    "Content-Type": "application/octet-stream",
+    "X-Owner-Email": opts.ownerEmail,
+  };
+  if (opts.recipientEmails?.length) {
+    headers["X-Recipient-Emails"] = opts.recipientEmails.join(",");
+  }
+  if (opts.expiresInSeconds) {
+    headers["X-Expires-In-Seconds"] = String(opts.expiresInSeconds);
+  }
+
   const uploadResp = await fetch(`${opts.apiBase}/blobs`, {
     method: "POST",
-    headers: { "Content-Type": "application/octet-stream" },
+    headers,
     body: packed,
   });
 
@@ -53,16 +68,15 @@ export async function shareHtml(
     throw new Error(`upload failed: HTTP ${uploadResp.status} — ${text}`);
   }
 
-  const { id, expiresAt } = (await uploadResp.json()) as {
+  const { id, expiresAt, requiresVerify } = (await uploadResp.json()) as {
     id: string;
     expiresAt: number;
+    requiresVerify: boolean;
   };
 
   const rawKey = await exportKeyRaw(key);
   const keyB64 = bytesToB64Url(rawKey);
-
-  // Key in URL fragment — browsers do not send fragments to servers.
   const url = `${opts.viewerBase}/v/${id}#${keyB64}`;
 
-  return { url, id, expiresAt, byteLength: packed.byteLength };
+  return { url, id, expiresAt, byteLength: packed.byteLength, requiresVerify };
 }
