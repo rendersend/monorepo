@@ -1,11 +1,9 @@
 /**
  * Data layer contracts.
  *
- * The API code talks only to these interfaces. Concrete implementations
- * (sqlite for dev, supabase for production) live alongside this file.
- * Switching backends is a one-line change in store.ts.
- *
- * All timestamps are unix milliseconds.
+ * All methods are async so implementations can be backed by either a
+ * synchronous local driver (SQLite/better-sqlite3) or an async remote
+ * one (PostgreSQL via Supabase). All timestamps are unix milliseconds.
  */
 
 export interface User {
@@ -69,47 +67,44 @@ export interface VerifyAttempt {
 // ---------- repository contracts ----------
 
 export interface UserRepo {
-  /** Insert if missing; return current row. */
-  upsertAnonymous(email: string, when: number): User;
-  get(email: string): User | null;
-  setHasPasskey(email: string, hasPasskey: boolean): void;
+  upsertAnonymous(email: string, when: number): Promise<User>;
+  get(email: string): Promise<User | null>;
+  setHasPasskey(email: string, hasPasskey: boolean): Promise<void>;
 }
 
 export interface PasskeyRepo {
-  insert(cred: PasskeyCredential): void;
-  getByCredentialId(credentialId: string): PasskeyCredential | null;
-  listByEmail(email: string): PasskeyCredential[];
-  updateCounter(credentialId: string, counter: number, lastUsedAt: number): void;
-  delete(credentialId: string): void;
+  insert(cred: PasskeyCredential): Promise<void>;
+  getByCredentialId(credentialId: string): Promise<PasskeyCredential | null>;
+  listByEmail(email: string): Promise<PasskeyCredential[]>;
+  updateCounter(credentialId: string, counter: number, lastUsedAt: number): Promise<void>;
+  delete(credentialId: string): Promise<void>;
 }
 
 export interface RecoveryCodeRepo {
-  /** Replace any existing recovery code for the user. */
-  set(email: string, codeHash: string, when: number): void;
-  get(email: string): RecoveryCode | null;
-  /** Mark consumed; idempotent (ignored if already consumed). */
-  consume(email: string, when: number): void;
+  set(email: string, codeHash: string, when: number): Promise<void>;
+  get(email: string): Promise<RecoveryCode | null>;
+  consume(email: string, when: number): Promise<void>;
 }
 
 export interface ShareRepo {
-  create(input: CreateShareInput, when: number): Share;
-  get(id: string): Share | null;
-  countByOwner(email: string): number;
-  listByOwner(email: string, opts?: { limit?: number }): Share[];
-  recordView(id: string, when: number): void;
-  revoke(id: string, when: number): void;
+  create(input: CreateShareInput, when: number): Promise<Share>;
+  get(id: string): Promise<Share | null>;
+  countByOwner(email: string): Promise<number>;
+  listByOwner(email: string, opts?: { limit?: number }): Promise<Share[]>;
+  recordView(id: string, when: number): Promise<void>;
+  revoke(id: string, when: number): Promise<void>;
 }
 
 export interface SessionRepo {
-  create(email: string, ttlMs: number, now: number): Session;
-  get(token: string): Session | null;
-  delete(token: string): void;
-  deleteExpired(now: number): number;
+  create(email: string, ttlMs: number, now: number): Promise<Session>;
+  get(token: string): Promise<Session | null>;
+  delete(token: string): Promise<void>;
+  deleteExpired(now: number): Promise<number>;
 }
 
 export interface VerifyAttemptRepo {
-  record(shareId: string, ip: string, when: number): void;
-  countRecent(shareId: string, sinceTimestamp: number): number;
+  record(shareId: string, ip: string, when: number): Promise<void>;
+  countRecent(shareId: string, sinceTimestamp: number): Promise<number>;
 }
 
 export interface DataStore {
@@ -119,5 +114,5 @@ export interface DataStore {
   shares: ShareRepo;
   sessions: SessionRepo;
   verifyAttempts: VerifyAttemptRepo;
-  close(): void;
+  close(): void | Promise<void>;
 }
