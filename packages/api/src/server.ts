@@ -18,18 +18,58 @@
  * SQLite for metadata via the DataStore wrapper. Backend swappable
  * via RENDERSEND_DB env (sqlite | supabase later).
  */
+// Load .env file manually
+import { readFileSync, existsSync } from "node:fs";
+import { resolve, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const envPaths = [
+  resolve(process.cwd(), ".env"),
+  resolve(__dirname, "../../../.env"),
+  resolve(__dirname, "../../../../.env"),
+];
+
+let envPath = null;
+for (const path of envPaths) {
+  if (existsSync(path)) {
+    envPath = path;
+    console.log(`[env] Loading from: ${path}`);
+    break;
+  }
+}
+
+if (envPath) {
+  const envContent = readFileSync(envPath, "utf-8");
+  for (const line of envContent.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith("#")) {
+      const eqIndex = trimmed.indexOf("=");
+      if (eqIndex > 0) {
+        const key = trimmed.slice(0, eqIndex).trim();
+        let value = trimmed.slice(eqIndex + 1).trim();
+        // Remove quotes if present
+        if ((value.startsWith('"') && value.endsWith('"')) || 
+            (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1);
+        }
+        if (!process.env[key]) {
+          process.env[key] = value;
+        }
+      }
+    }
+  }
+}
+
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { getStore } from "./db/store.ts";
+import { getStore } from "./db/store";
+import { createSupabaseStorage } from "./supabase-storage";
 
 const PORT = Number(process.env.PORT ?? 8787);
-const STORAGE_DIR = resolve(process.env.STORAGE_DIR ?? "./storage");
-const BLOBS_DIR = join(STORAGE_DIR, "blobs");
 const MAX_BLOB_BYTES = 10 * 1024 * 1024;
 
 const VERIFY_WINDOW_MS = 10 * 60 * 1000;
@@ -43,8 +83,17 @@ const ALLOWED_EXPIRY_SECONDS = new Set([
 ]);
 const DEFAULT_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
 
-await mkdir(BLOBS_DIR, { recursive: true });
 const store = getStore();
+
+// Initialize Supabase Storage
+const storage = createSupabaseStorage({
+  url: process.env.SUPABASE_URL || "https://mdfohqjsgnplmjjnypqj.supabase.co",
+  serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "",
+});
+
+// Ensure storage bucket exists
+await storage.ensureBucket();
+console.log("[storage] Supabase Storage initialized");
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -124,8 +173,8 @@ app.post("/blobs", async (c) => {
   const now = Date.now();
   const expiresAt = now + expiresInSeconds * 1000;
 
-  store.users.upsertAnonymous(ownerEmail, now);
-  const share = store.shares.create(
+  await store.users.upsertAnonymous(ownerEmail, now);
+  const share = await store.shares.create(
     {
       id,
       ownerEmail,
@@ -136,7 +185,7 @@ app.post("/blobs", async (c) => {
     now,
   );
 
-  await writeFile(join(BLOBS_DIR, `${id}.bin`), Buffer.from(body));
+  await storage.uploadBlob(id, Buffer.from(body));
 
   return c.json({
     id: share.id,
@@ -149,14 +198,14 @@ interface AccessibilityResult {
   ok: boolean;
   status?: ContentfulStatusCode;
   body?: Record<string, unknown>;
-  share?: ReturnType<typeof store.shares.get>;
+  share?: Awaited<ReturnType<typeof store.shares.get>>;
 }
 
-function checkShareAccessibility(id: string): AccessibilityResult {
+async function checkShareAccessibility(id: string): Promise<AccessibilityResult> {
   if (!/^[0-9a-f]{32}$/.test(id)) {
     return { ok: false, status: 400, body: { error: "invalid id" } };
   }
-  const share = store.shares.get(id);
+  const share = await store.shares.get(id);
   if (!share) {
     return { ok: false, status: 404, body: { error: "not found" } };
   }
@@ -170,11 +219,7 @@ function checkShareAccessibility(id: string): AccessibilityResult {
 }
 
 async function readBlob(id: string): Promise<Buffer | null> {
-  try {
-    return await readFile(join(BLOBS_DIR, `${id}.bin`));
-  } catch {
-    return null;
-  }
+  return await storage.downloadBlob(id);
 }
 
 /**
@@ -186,7 +231,7 @@ async function readBlob(id: string): Promise<Buffer | null> {
  */
 app.get("/blobs/:id", async (c) => {
   const id = c.req.param("id");
-  const check = checkShareAccessibility(id);
+  const check = await checkShareAccessibility(id);
   if (!check.ok) return c.json(check.body!, check.status!);
 
   const share = check.share!;
@@ -197,10 +242,10 @@ app.get("/blobs/:id", async (c) => {
   const data = await readBlob(id);
   if (!data) return c.json({ error: "not found" }, 404);
 
-  store.shares.recordView(id, Date.now());
+  await store.shares.recordView(id, Date.now());
   c.header("Content-Type", "application/octet-stream");
   c.header("Cache-Control", "private, max-age=300");
-  return c.body(data);
+  return c.body(new Uint8Array(data));
 });
 
 /**
@@ -220,13 +265,13 @@ app.get("/blobs/:id", async (c) => {
  */
 app.post("/blobs/:id/access", async (c) => {
   const id = c.req.param("id");
-  const check = checkShareAccessibility(id);
+  const check = await checkShareAccessibility(id);
   if (!check.ok) return c.json(check.body!, check.status!);
 
   const share = check.share!;
   const now = Date.now();
 
-  const recent = store.verifyAttempts.countRecent(id, now - VERIFY_WINDOW_MS);
+  const recent = await store.verifyAttempts.countRecent(id, now - VERIFY_WINDOW_MS);
   if (recent >= VERIFY_MAX_ATTEMPTS) {
     return c.json({ error: "rate_limited" }, 429);
   }
@@ -242,7 +287,7 @@ app.post("/blobs/:id/access", async (c) => {
   }
 
   const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
-  store.verifyAttempts.record(id, ip, now);
+  await store.verifyAttempts.record(id, ip, now);
 
   const entered = normalizeEmail(payload.email);
   if (!isValidEmail(entered) || !share.recipientEmails?.includes(entered)) {
@@ -252,12 +297,18 @@ app.post("/blobs/:id/access", async (c) => {
   const data = await readBlob(id);
   if (!data) return c.json({ error: "not found" }, 404);
 
-  store.shares.recordView(id, now);
+  await store.shares.recordView(id, now);
   c.header("Content-Type", "application/octet-stream");
-  return c.body(data);
+  return c.body(new Uint8Array(data));
 });
 
-serve({ fetch: app.fetch, port: PORT }, (info) => {
-  console.log(`[api] listening on http://localhost:${info.port}`);
-  console.log(`[api] storage at ${STORAGE_DIR}`);
-});
+// Vercel serverless export
+export default app;
+
+// Local development server
+if (process.env.NODE_ENV !== "production") {
+  serve({ fetch: app.fetch, port: PORT }, (info) => {
+    console.log(`[api] listening on http://localhost:${info.port}`);
+    console.log(`[api] storage: Supabase Storage (bucket: rendersend-blobs)`);
+  });
+}

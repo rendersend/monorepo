@@ -1,36 +1,25 @@
 /**
  * Factory for the application's DataStore.
  *
- * Driver is selected by RENDERSEND_DB env var. Default is sqlite. The
- * intent is that adding a Supabase implementation later requires no
- * changes outside this file:
- *
- *   case "supabase":
- *     return createSupabaseStore({ url: ..., serviceRoleKey: ... });
+ * Uses Supabase as the only backend.
  */
-import { resolve } from "node:path";
-import { mkdirSync } from "node:fs";
 import type { DataStore } from "./types.ts";
-import { createSqliteStore } from "./sqlite.ts";
+import { createSupabaseStore } from "./supabase";
 
 let cached: DataStore | null = null;
 
 export function getStore(): DataStore {
   if (cached) return cached;
 
-  const driver = process.env.RENDERSEND_DB ?? "sqlite";
-  switch (driver) {
-    case "sqlite": {
-      const path = resolve(
-        process.env.RENDERSEND_DB_PATH ?? "./storage/rendersend.db",
-      );
-      mkdirSync(resolve(path, ".."), { recursive: true });
-      cached = createSqliteStore(path);
-      return cached;
-    }
-    default:
-      throw new Error(`unknown RENDERSEND_DB driver: ${driver}`);
+  const url = process.env.SUPABASE_URL || "https://mdfohqjsgnplmjjnypqj.supabase.co";
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+  
+  if (!serviceRoleKey) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY environment variable is required");
   }
+  
+  cached = createSupabaseStore({ url, serviceRoleKey });
+  return cached;
 }
 
 export function resetStoreForTests(): void {
@@ -40,7 +29,7 @@ export function resetStoreForTests(): void {
   }
 }
 
-export type { DataStore } from "./types.ts";
+export type { DataStore } from "./types";
 export type {
   CreateShareInput,
   PasskeyCredential,
@@ -49,4 +38,4 @@ export type {
   Share,
   User,
   VerifyAttempt,
-} from "./types.ts";
+} from "./types";

@@ -5,6 +5,43 @@
  *   echo '<h1>hi</h1>' | RENDERSEND_OWNER_EMAIL=alice@example.com \
  *                       RENDERSEND_RECIPIENT_EMAILS=bob@example.com,carol@example.com pnpm share
  */
+
+// Load .env file manually (same logic as API server)
+import { readFileSync, existsSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const envPaths = [
+  resolve(process.cwd(), ".env"),
+  resolve(__dirname, "../../../.env"),
+  resolve(__dirname, "../../../../.env"),
+];
+
+for (const path of envPaths) {
+  if (existsSync(path)) {
+    const envContent = readFileSync(path, "utf-8");
+    for (const line of envContent.split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith("#")) {
+        const eqIndex = trimmed.indexOf("=");
+        if (eqIndex > 0) {
+          const key = trimmed.slice(0, eqIndex).trim();
+          let value = trimmed.slice(eqIndex + 1).trim();
+          if ((value.startsWith('"') && value.endsWith('"')) || 
+              (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.slice(1, -1);
+          }
+          if (!process.env[key]) {
+            process.env[key] = value;
+          }
+        }
+      }
+    }
+    break;
+  }
+}
+
 import { shareHtml } from "./share.ts";
 
 const API_BASE = process.env.RENDERSEND_API ?? "http://localhost:8787";

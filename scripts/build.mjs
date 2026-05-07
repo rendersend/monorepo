@@ -31,6 +31,10 @@ console.log("▶ building viewer (Vite)…");
 await run("pnpm", ["--filter", "@rendersend/viewer", "build"], "viewer build");
 console.log("✓ viewer → packages/viewer/dist/\n");
 
+console.log("▶ building API (TypeScript)…");
+await run("pnpm", ["--filter", "@rendersend/api", "build"], "api build");
+console.log("✓ API    → packages/api/dist/\n");
+
 console.log("▶ building MCP server (tsup)…");
 await run("pnpm", ["--filter", "@rendersend/mcp", "build"], "mcp build");
 console.log("✓ MCP    → packages/mcp/dist/\n");

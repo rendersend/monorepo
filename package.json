@@ -10,6 +10,8 @@
     "dev:viewer": "pnpm --filter @rendersend/viewer dev",
     "dev:mcp": "pnpm --filter @rendersend/mcp start:dev",
     "build": "node scripts/build.mjs",
+    "build:viewer": "pnpm --filter @rendersend/viewer build",
+    "build:api": "pnpm --filter @rendersend/api build",
     "release": "node scripts/release.mjs",
     "share": "pnpm --filter @rendersend/mcp share",
     "print-mcp-config": "node scripts/print-mcp-config.mjs",
