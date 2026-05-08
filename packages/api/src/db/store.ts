@@ -3,7 +3,7 @@
  *
  * Uses Supabase as the only backend.
  */
-import type { DataStore } from "./types.ts";
+import type { DataStore } from "./types";
 import { createSupabaseStore } from "./supabase";
 
 let cached: DataStore | null = null;
