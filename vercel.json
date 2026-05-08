@@ -4,6 +4,7 @@
   "installCommand": "pnpm install",
   "framework": "vite",
   "env": {
-    "NODE_ENV": "production"
+    "NODE_ENV": "production",
+    "VITE_API_BASE": "https://rendersend-api.onrender.com"
   }
 }
