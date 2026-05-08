@@ -85,10 +85,18 @@ const DEFAULT_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
 
 const store = getStore();
 
+// Validate required environment variables
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  throw new Error("Missing required environment variables: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY");
+}
+
 // Initialize Supabase Storage
 const storage = createSupabaseStorage({
-  url: process.env.SUPABASE_URL || "https://mdfohqjsgnplmjjnypqj.supabase.co",
-  serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "",
+  url: SUPABASE_URL,
+  serviceRoleKey: SUPABASE_KEY,
 });
 
 // Ensure storage bucket exists
@@ -105,9 +113,14 @@ function isValidEmail(s: string): boolean {
   return s.length > 0 && s.length < 320 && EMAIL_RE.test(s);
 }
 
+// CORS configuration from environment
+const CORS_ORIGINS = process.env.CORS_ORIGINS 
+  ? process.env.CORS_ORIGINS.split(",").map(origin => origin.trim())
+  : ["*"]; // Default to allow all origins
+
 const app = new Hono();
 app.use("*", cors({
-  origin: "*",
+  origin: CORS_ORIGINS,
   allowMethods: ["GET", "POST", "OPTIONS"],
   allowHeaders: ["Content-Type", "X-Owner-Email", "X-Recipient-Emails", "X-Expires-In-Seconds"],
 }));
@@ -309,6 +322,12 @@ export default app;
 if (process.env.NODE_ENV !== "production") {
   serve({ fetch: app.fetch, port: PORT }, (info) => {
     console.log(`[api] listening on http://localhost:${info.port}`);
+    console.log(`[api] storage: Supabase Storage (bucket: rendersend-blobs)`);
+  });
+} else {
+  // Production server still needs to run locally for testing
+  serve({ fetch: app.fetch, port: PORT }, (info) => {
+    console.log(`[api] production server listening on http://localhost:${info.port}`);
     console.log(`[api] storage: Supabase Storage (bucket: rendersend-blobs)`);
   });
 }
