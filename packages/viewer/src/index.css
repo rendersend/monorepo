@@ -1,0 +1,180 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Rendersend design system. Tokens shared with the viewer page.
+   All colors stored as HSL triplets so they compose cleanly with Tailwind. */
+
+@layer base {
+  :root {
+    /* Light theme — bg #fafafa, surface #ffffff, fg #0a0a0a, muted #71717a,
+       border #e4e4e7, accent #0a0a0a, accent-fg #ffffff */
+    --background: 0 0% 98%;
+    --surface: 0 0% 100%;
+    --foreground: 0 0% 4%;
+    --muted-foreground: 240 4% 46%;
+    --muted: 240 5% 96%;
+    --border: 240 5% 90%;
+    --input: 240 5% 90%;
+    --accent: 0 0% 4%;
+    --accent-foreground: 0 0% 100%;
+
+    /* shadcn aliases */
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 4%;
+    --primary: 0 0% 4%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 0 0% 4%;
+    --accent-soft: 240 5% 96%;
+    --accent-soft-foreground: 0 0% 4%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --ring: 0 0% 4%;
+
+    --radius: 0.625rem; /* 10px — buttons / inputs */
+    --radius-card: 1rem; /* 16px */
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
+    --shadow-card-hover: 0 1px 2px rgba(0, 0, 0, 0.05), 0 16px 40px rgba(0, 0, 0, 0.08);
+  }
+
+  .dark,
+  :root.dark {
+    /* Dark theme — bg #09090b, surface #18181b, fg #fafafa, muted #a1a1aa,
+       border #27272a, accent #fafafa, accent-fg #0a0a0a */
+    --background: 240 10% 4%;
+    --surface: 240 6% 10%;
+    --foreground: 0 0% 98%;
+    --muted-foreground: 240 5% 65%;
+    --muted: 240 6% 15%;
+    --border: 240 4% 16%;
+    --input: 240 4% 16%;
+    --accent: 0 0% 98%;
+    --accent-foreground: 0 0% 4%;
+
+    --card: 240 6% 10%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 6% 10%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 4%;
+    --secondary: 240 6% 15%;
+    --secondary-foreground: 0 0% 98%;
+    --accent-soft: 240 6% 15%;
+    --accent-soft-foreground: 0 0% 98%;
+    --destructive: 0 62% 40%;
+    --destructive-foreground: 0 0% 98%;
+    --ring: 0 0% 98%;
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.5);
+    --shadow-card-hover: 0 1px 2px rgba(0, 0, 0, 0.5), 0 16px 40px rgba(0, 0, 0, 0.6);
+  }
+
+  /* System-driven dark mode (no toggle) */
+  @media (prefers-color-scheme: dark) {
+    :root:not(.light) {
+      --background: 240 10% 4%;
+      --surface: 240 6% 10%;
+      --foreground: 0 0% 98%;
+      --muted-foreground: 240 5% 65%;
+      --muted: 240 6% 15%;
+      --border: 240 4% 16%;
+      --input: 240 4% 16%;
+      --accent: 0 0% 98%;
+      --accent-foreground: 0 0% 4%;
+      --card: 240 6% 10%;
+      --card-foreground: 0 0% 98%;
+      --popover: 240 6% 10%;
+      --popover-foreground: 0 0% 98%;
+      --primary: 0 0% 98%;
+      --primary-foreground: 0 0% 4%;
+      --secondary: 240 6% 15%;
+      --secondary-foreground: 0 0% 98%;
+      --accent-soft: 240 6% 15%;
+      --accent-soft-foreground: 0 0% 98%;
+      --ring: 0 0% 98%;
+      --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.5);
+      --shadow-card-hover: 0 1px 2px rgba(0, 0, 0, 0.5), 0 16px 40px rgba(0, 0, 0, 0.6);
+    }
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+      Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+
+  /* Subtle selection */
+  ::selection {
+    background: hsl(var(--accent) / 0.15);
+    color: hsl(var(--foreground));
+  }
+}
+
+@layer utilities {
+  .hero-backdrop {
+    background: radial-gradient(
+      ellipse 1200px 500px at 50% -10%,
+      color-mix(in srgb, hsl(var(--accent)) 5%, transparent),
+      transparent 60%
+    );
+  }
+
+  .eyebrow {
+    @apply text-xs uppercase text-muted-foreground;
+    letter-spacing: 0.08em;
+    font-weight: 500;
+  }
+
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+
+  .shadow-card-hover {
+    box-shadow: var(--shadow-card-hover);
+  }
+
+  /* Reveal on scroll */
+  .reveal {
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 600ms ease-out, transform 600ms ease-out;
+    will-change: opacity, transform;
+  }
+  .reveal.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal {
+      opacity: 1;
+      transform: none;
+      transition: none;
+    }
+  }
+}
