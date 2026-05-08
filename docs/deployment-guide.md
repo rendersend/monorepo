@@ -33,10 +33,10 @@ The backend is already configured in `packages/api/` with:
 
 **Basic Settings:**
 - **Name**: rendersend-api (or your preferred name)
-- **Root Directory**: `packages/api`
+- **Root Directory**: `.` (monorepo root)
 - **Runtime**: Node 20
-- **Build Command**: `npm install && npm run build`
-- **Start Command**: `npm start`
+- **Build Command**: `npm install -g pnpm && pnpm install && pnpm --filter @rendersend/api build`
+- **Start Command**: `pnpm --filter @rendersend/api start`
 
 **Environment Variables:**
 ```
