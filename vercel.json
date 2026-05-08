@@ -1,24 +1,8 @@
 {
-  "buildCommand": "pnpm build",
+  "buildCommand": "pnpm build:viewer",
   "outputDirectory": "packages/viewer/dist",
   "installCommand": "pnpm install",
   "framework": "vite",
-  "functions": {
-    "packages/api/src/server.ts": {
-      "runtime": "nodejs20.x",
-      "maxDuration": 30
-    }
-  },
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/packages/api/src/server.ts"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/packages/viewer/dist/$1"
-    }
-  ],
   "env": {
     "NODE_ENV": "production"
   }
