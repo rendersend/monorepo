@@ -22,9 +22,9 @@ import { serve } from "@hono/node-server";
 import { resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { getStore } from "./db/store";
-import { getBlobStore } from "./storage/blob";
-import type { Share } from "./db/types";
+import { getStore } from "./db/store.ts";
+import { getBlobStore } from "./storage/blob.ts";
+import type { Share } from "./db/types.ts";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const STORAGE_DIR = resolve(process.env.STORAGE_DIR ?? "./storage");

@@ -17,7 +17,7 @@ import type {
   Session,
   Share,
   User,
-} from "./types";
+} from "./types.ts";
 
 // ---------- schema ----------
 

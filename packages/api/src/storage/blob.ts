@@ -5,8 +5,8 @@
  *   BLOB_STORE=fs   (default) — local filesystem, for dev and single-server deploys
  *   BLOB_STORE=s3           — AWS S3 or any S3-compatible store (R2, MinIO, etc.)
  */
-import { createFsBlobStore } from "./fs-blob";
-import { createS3BlobStore } from "./s3-blob";
+import { createFsBlobStore } from "./fs-blob.ts";
+import { createS3BlobStore } from "./s3-blob.ts";
 
 export interface BlobStore {
   read(id: string): Promise<Buffer | null>;

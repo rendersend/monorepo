@@ -8,9 +8,9 @@
  */
 import { resolve } from "node:path";
 import { mkdirSync } from "node:fs";
-import type { DataStore } from "./types";
-import { createSqliteStore } from "./sqlite";
-import { createPostgresStore } from "./postgres";
+import type { DataStore } from "./types.ts";
+import { createSqliteStore } from "./sqlite.ts";
+import { createPostgresStore } from "./postgres.ts";
 
 let cached: DataStore | null = null;
 
@@ -45,7 +45,7 @@ export function resetStoreForTests(): void {
   }
 }
 
-export type { DataStore } from "./types";
+export type { DataStore } from "./types.ts";
 export type {
   CreateShareInput,
   PasskeyCredential,
@@ -54,4 +54,4 @@ export type {
   Share,
   User,
   VerifyAttempt,
-} from "./types";
+} from "./types.ts";
