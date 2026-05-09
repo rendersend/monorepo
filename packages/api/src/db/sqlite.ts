@@ -269,21 +269,21 @@ export function createSqliteStore(path: string): DataStore {
 
   return {
     users: {
-      upsertAnonymous(email, when) {
+      async upsertAnonymous(email, when) {
         insertUser.run(email, when);
         return userFromRow(getUser.get(email) as UserRow);
       },
-      get(email) {
+      async get(email) {
         const row = getUser.get(email) as UserRow | undefined;
         return row ? userFromRow(row) : null;
       },
-      setHasPasskey(email, hasPasskey) {
+      async setHasPasskey(email, hasPasskey) {
         setUserHasPasskey.run(hasPasskey ? 1 : 0, email);
       },
     },
 
     passkeys: {
-      insert(cred) {
+      async insert(cred) {
         insertPasskey.run(
           cred.credentialId,
           cred.email,
@@ -295,37 +295,37 @@ export function createSqliteStore(path: string): DataStore {
           cred.lastUsedAt,
         );
       },
-      getByCredentialId(credentialId) {
+      async getByCredentialId(credentialId) {
         const row = getPasskeyById.get(credentialId) as PasskeyRow | undefined;
         return row ? passkeyFromRow(row) : null;
       },
-      listByEmail(email) {
+      async listByEmail(email) {
         const rows = listPasskeysByEmail.all(email) as PasskeyRow[];
         return rows.map(passkeyFromRow);
       },
-      updateCounter(credentialId, counter, lastUsedAt) {
+      async updateCounter(credentialId, counter, lastUsedAt) {
         updatePasskeyCounter.run(counter, lastUsedAt, credentialId);
       },
-      delete(credentialId) {
+      async delete(credentialId) {
         deletePasskey.run(credentialId);
       },
     },
 
     recoveryCodes: {
-      set(email, codeHash, when) {
+      async set(email, codeHash, when) {
         upsertRecovery.run(email, codeHash, when);
       },
-      get(email) {
+      async get(email) {
         const row = getRecovery.get(email) as RecoveryRow | undefined;
         return row ? recoveryFromRow(row) : null;
       },
-      consume(email, when) {
+      async consume(email, when) {
         consumeRecovery.run(when, email);
       },
     },
 
     shares: {
-      create(input: CreateShareInput, when) {
+      async create(input: CreateShareInput, when) {
         insertShare.run(
           input.id,
           input.ownerEmail,
@@ -336,49 +336,49 @@ export function createSqliteStore(path: string): DataStore {
         );
         return shareFromRow(getShare.get(input.id) as ShareRow);
       },
-      get(id) {
+      async get(id) {
         const row = getShare.get(id) as ShareRow | undefined;
         return row ? shareFromRow(row) : null;
       },
-      countByOwner(email) {
+      async countByOwner(email) {
         return (countSharesByOwner.get(email) as { n: number }).n;
       },
-      listByOwner(email, opts) {
+      async listByOwner(email, opts) {
         const rows = listSharesByOwner.all(email, opts?.limit ?? 100) as ShareRow[];
         return rows.map(shareFromRow);
       },
-      recordView(id, when) {
+      async recordView(id, when) {
         recordView.run(when, when, id);
       },
-      revoke(id, when) {
+      async revoke(id, when) {
         revokeShare.run(when, id);
       },
     },
 
     sessions: {
-      create(email, ttlMs, now) {
+      async create(email, ttlMs, now) {
         const token = randomBytes(32).toString("base64url");
         const expiresAt = now + ttlMs;
         insertSession.run(token, email, now, expiresAt);
         return { token, email, createdAt: now, expiresAt };
       },
-      get(token) {
+      async get(token) {
         const row = getSession.get(token) as SessionRow | undefined;
         return row ? sessionFromRow(row) : null;
       },
-      delete(token) {
+      async delete(token) {
         deleteSession.run(token);
       },
-      deleteExpired(now) {
+      async deleteExpired(now) {
         return deleteExpiredSessions.run(now).changes;
       },
     },
 
     verifyAttempts: {
-      record(shareId, ip, when) {
+      async record(shareId, ip, when) {
         insertVerify.run(shareId, ip, when);
       },
-      countRecent(shareId, sinceTimestamp) {
+      async countRecent(shareId, sinceTimestamp) {
         return (countRecentVerify.get(shareId, sinceTimestamp) as { n: number }).n;
       },
     },

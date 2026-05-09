@@ -5,6 +5,7 @@ release/
 .env.local
 *.log
 .DS_Store
-storage/
+/storage/
+packages/api/storage/
 .claude/settings.local.json
 *.tsbuildinfo
