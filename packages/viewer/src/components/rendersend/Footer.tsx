@@ -47,7 +47,7 @@ export const Footer = () => {
         <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-border pt-6 text-xs text-muted-foreground">
           <a href="/privacy" className="transition-colors hover:text-foreground">Privacy</a>
           <a href="/terms" className="transition-colors hover:text-foreground">Terms</a>
-          <a href="/security" className="transition-colors hover:text-foreground">Security</a>
+          <a href="/#security" className="transition-colors hover:text-foreground">Security</a>
           <a href="/status" className="transition-colors hover:text-foreground">Status</a>
         </div>
       </div>
