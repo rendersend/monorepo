@@ -1,7 +1,0 @@
-{
-  "framework": "vite",
-  "rootDirectory": "packages/viewer",
-  "buildCommand": "pnpm build",
-  "outputDirectory": "dist",
-  "installCommand": "pnpm install"
-}
