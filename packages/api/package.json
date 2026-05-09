@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node --experimental-strip-types --watch src/server.ts",
     "start": "node --experimental-strip-types src/server.ts",
-    "build": "tsc"
+    "build": "tsc --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",
