@@ -22,9 +22,9 @@ import { serve } from "@hono/node-server";
 import { resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { getStore } from "./db/store.ts";
-import { getBlobStore } from "./storage/blob.ts";
-import type { Share } from "./db/types.ts";
+import { getStore } from "./db/store";
+import { getBlobStore } from "./storage/blob";
+import type { Share } from "./db/types";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const STORAGE_DIR = resolve(process.env.STORAGE_DIR ?? "./storage");
@@ -162,7 +162,7 @@ app.get("/blobs/:id", async (c) => {
   await store.shares.recordView(id, Date.now());
   c.header("Content-Type", "application/octet-stream");
   c.header("Cache-Control", "private, max-age=300");
-  return c.body(data);
+  return c.body(new Uint8Array(data));
 });
 
 app.post("/blobs/:id/access", async (c) => {
@@ -201,7 +201,7 @@ app.post("/blobs/:id/access", async (c) => {
 
   await store.shares.recordView(id, now);
   c.header("Content-Type", "application/octet-stream");
-  return c.body(data);
+  return c.body(new Uint8Array(data));
 });
 
 serve({ fetch: app.fetch, port: PORT }, (info) => {

@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { BlobStore } from "./blob.ts";
+import type { BlobStore } from "./blob";
 
 export async function createFsBlobStore(storageDir: string): Promise<BlobStore> {
   const blobsDir = join(storageDir, "blobs");

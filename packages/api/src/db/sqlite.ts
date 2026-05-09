@@ -13,7 +13,7 @@ import type {
   Session,
   Share,
   User,
-} from "./types.ts";
+} from "./types";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (

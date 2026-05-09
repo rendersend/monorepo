@@ -4,7 +4,7 @@ import {
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import type { Readable } from "node:stream";
-import type { BlobStore } from "./blob.ts";
+import type { BlobStore } from "./blob";
 
 interface S3BlobStoreOptions {
   bucket: string;
