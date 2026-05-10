@@ -183,14 +183,26 @@ const sessionFromRow = (r: SessionRow): Session => ({
 // ---------- factory ----------
 
 export async function createPostgresStore(url: string): Promise<DataStore> {
+  // Parse the URL manually and pass fields explicitly. The postgres npm package
+  // truncates usernames containing dots (e.g. "postgres.projectref") when it
+  // parses connection URLs itself, which breaks Supabase pooler connections.
+  const parsed = new URL(url);
   const isLocal =
-    url.includes("localhost") || url.includes("127.0.0.1");
+    parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
 
-  const sql = postgres(url, {
+  const sql = postgres({
+    host: parsed.hostname,
+    port: parsed.port ? Number(parsed.port) : 5432,
+    user: decodeURIComponent(parsed.username),
+    // DATABASE_PASSWORD env var takes precedence — avoids URL-encoding issues
+    // with special characters in Supabase-generated passwords.
+    password: process.env.DATABASE_PASSWORD ?? decodeURIComponent(parsed.password),
+    database: parsed.pathname.slice(1) || "postgres",
     ssl: isLocal ? false : "require",
     max: 10,
     idle_timeout: 30,
     connect_timeout: 10,
+    onnotice: () => {}, // suppress IF NOT EXISTS notices on startup
   });
 
   // Apply schema idempotently. sql.unsafe() is needed for multi-statement DDL.

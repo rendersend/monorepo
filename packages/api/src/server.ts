@@ -63,6 +63,15 @@ app.use("*", cors({
   allowHeaders: ["Content-Type", "X-Owner-Email", "X-Recipient-Emails", "X-Expires-In-Seconds"],
 }));
 
+app.use("*", async (c, next) => {
+  const start = Date.now();
+  await next();
+  const ms = Date.now() - start;
+  const status = c.res.status;
+  const flag = status >= 500 ? "ERR" : status >= 400 ? "WRN" : " OK";
+  console.log(`[api] ${flag} ${c.req.method} ${c.req.path} ${status} ${ms}ms`);
+});
+
 app.get("/health", (c) => c.json({ ok: true }));
 
 app.post("/blobs", async (c) => {
@@ -205,6 +214,8 @@ app.post("/blobs/:id/access", async (c) => {
 });
 
 serve({ fetch: app.fetch, port: PORT }, (info) => {
+  const db = process.env.RENDERSEND_DB ?? "sqlite";
+  const blobStore = (process.env.BLOB_STORE ?? "fs").split(/\s/)[0];
   console.log(`[api] listening on http://localhost:${info.port}`);
-  console.log(`[api] db=${process.env.RENDERSEND_DB ?? "sqlite"}  blobs=${process.env.BLOB_STORE ?? "fs"}`);
+  console.log(`[api] db=${db}  blobs=${blobStore}`);
 });
