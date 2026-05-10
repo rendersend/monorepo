@@ -107,6 +107,74 @@ export interface VerifyAttemptRepo {
   countRecent(shareId: string, sinceTimestamp: number): Promise<number>;
 }
 
+// ---------- debug / observability ----------
+
+export type EventLevel = "info" | "warn" | "error";
+export type SessionSource = "mcp" | "web" | "api";
+
+export interface DebugSession {
+  id: string;
+  userEmail: string | null;
+  source: SessionSource;
+  userAgent: string | null;
+  ip: string | null;
+  createdAt: number;
+  lastEventAt: number | null;
+  eventCount: number;
+}
+
+export interface DebugEvent {
+  id: string;
+  sessionId: string;
+  ts: number;
+  level: EventLevel;
+  event: string;
+  message: string;
+  shareId: string | null;
+  payload: Record<string, unknown>;
+}
+
+export interface CreateDebugSessionInput {
+  userEmail?: string | null;
+  source: SessionSource;
+  userAgent?: string | null;
+  ip?: string | null;
+}
+
+export interface EmitEventInput {
+  sessionId: string;
+  level: EventLevel;
+  event: string;
+  message: string;
+  shareId?: string | null;
+  payload?: Record<string, unknown>;
+}
+
+export interface DebugSessionRepo {
+  create(input: CreateDebugSessionInput, when: number): Promise<DebugSession>;
+  get(id: string): Promise<DebugSession | null>;
+  list(opts?: { limit?: number }): Promise<DebugSession[]>;
+}
+
+export interface ListEventsOpts {
+  limit?: number;
+  shareId?: string | null;
+  sessionId?: string | null;
+  level?: EventLevel | null;
+  source?: SessionSource | null;
+}
+
+export interface FlatEvent extends DebugEvent {
+  source: SessionSource;
+  userEmail: string | null;
+}
+
+export interface DebugEventRepo {
+  emit(input: EmitEventInput, when: number): Promise<DebugEvent>;
+  listBySession(sessionId: string): Promise<DebugEvent[]>;
+  listRecent(opts?: ListEventsOpts): Promise<FlatEvent[]>;
+}
+
 export interface DataStore {
   users: UserRepo;
   passkeys: PasskeyRepo;
@@ -114,5 +182,9 @@ export interface DataStore {
   shares: ShareRepo;
   sessions: SessionRepo;
   verifyAttempts: VerifyAttemptRepo;
+  debug: {
+    sessions: DebugSessionRepo;
+    events: DebugEventRepo;
+  };
   close(): void | Promise<void>;
 }

@@ -89,12 +89,22 @@ const Upload = () => {
   const [result, setResult] = useState<ShareSuccess | null>(null);
   const [copied, setCopied] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem(OWNER_KEY);
       if (saved) setOwnerEmail(saved);
     } catch {}
+
+    fetch(`${API_BASE}/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: "web" }),
+    })
+      .then((r) => r.json())
+      .then((d: { id: string }) => { sessionIdRef.current = d.id; })
+      .catch(() => {});
   }, []);
 
   const acceptFile = (f: File): void => {
@@ -143,6 +153,9 @@ const Upload = () => {
       };
       if (recipientEmails.length > 0) {
         headers["X-Recipient-Emails"] = recipientEmails.join(",");
+      }
+      if (sessionIdRef.current) {
+        headers["X-Session-ID"] = sessionIdRef.current;
       }
 
       const resp = await fetch(`${API_BASE}/blobs`, {
