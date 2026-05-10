@@ -8,83 +8,25 @@
  * separate migration step for the initial launch.
  */
 import postgres from "postgres";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import type {
+  CreateDebugSessionInput,
   CreateShareInput,
   DataStore,
+  DebugEvent,
+  DebugSession,
+  EmitEventInput,
+  FlatEvent,
+  ListEventsOpts,
   PasskeyCredential,
   RecoveryCode,
   Session,
+  SessionSource,
   Share,
   User,
 } from "./types.ts";
+import { migratePostgres } from "./migrate.ts";
 
-// ---------- schema ----------
-
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS users (
-  email        TEXT    PRIMARY KEY,
-  created_at   BIGINT  NOT NULL,
-  has_passkey  BOOLEAN NOT NULL DEFAULT FALSE
-);
-
-CREATE TABLE IF NOT EXISTS passkey_credentials (
-  credential_id  TEXT   PRIMARY KEY,
-  email          TEXT   NOT NULL REFERENCES users(email),
-  public_key     BYTEA  NOT NULL,
-  counter        INTEGER NOT NULL,
-  transports     TEXT,
-  device_label   TEXT,
-  created_at     BIGINT NOT NULL,
-  last_used_at   BIGINT
-);
-
-CREATE INDEX IF NOT EXISTS idx_passkey_email
-  ON passkey_credentials(email);
-
-CREATE TABLE IF NOT EXISTS recovery_codes (
-  email        TEXT   PRIMARY KEY REFERENCES users(email),
-  code_hash    TEXT   NOT NULL,
-  created_at   BIGINT NOT NULL,
-  consumed_at  BIGINT
-);
-
-CREATE TABLE IF NOT EXISTS shares (
-  id               TEXT    PRIMARY KEY,
-  owner_email      TEXT    NOT NULL REFERENCES users(email),
-  recipient_emails TEXT,
-  byte_length      INTEGER NOT NULL,
-  created_at       BIGINT  NOT NULL,
-  expires_at       BIGINT  NOT NULL,
-  revoked_at       BIGINT,
-  view_count       INTEGER NOT NULL DEFAULT 0,
-  first_viewed_at  BIGINT,
-  last_viewed_at   BIGINT
-);
-
-CREATE INDEX IF NOT EXISTS idx_shares_owner
-  ON shares(owner_email);
-
-CREATE TABLE IF NOT EXISTS sessions (
-  token       TEXT   PRIMARY KEY,
-  email       TEXT   NOT NULL REFERENCES users(email),
-  created_at  BIGINT NOT NULL,
-  expires_at  BIGINT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_sessions_email
-  ON sessions(email);
-
-CREATE TABLE IF NOT EXISTS verify_attempts (
-  id           BIGSERIAL PRIMARY KEY,
-  share_id     TEXT    NOT NULL,
-  ip           TEXT    NOT NULL,
-  attempted_at BIGINT  NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_verify_share_time
-  ON verify_attempts(share_id, attempted_at);
-`;
 
 // ---------- row types ----------
 // BIGINT columns come back as strings from the postgres driver; we convert
@@ -134,6 +76,28 @@ interface SessionRow {
   expires_at: string;
 }
 
+interface DebugSessionRow {
+  id: string;
+  user_email: string | null;
+  source: string;
+  user_agent: string | null;
+  ip: string | null;
+  created_at: string;
+  last_event_at: string | null;
+  event_count: number;
+}
+
+interface DebugEventRow {
+  id: string;
+  session_id: string;
+  ts: string;
+  level: string;
+  event: string;
+  message: string;
+  share_id: string | null;
+  payload: Record<string, unknown>;
+}
+
 // ---------- row converters ----------
 
 const userFromRow = (r: UserRow): User => ({
@@ -180,6 +144,39 @@ const sessionFromRow = (r: SessionRow): Session => ({
   expiresAt: Number(r.expires_at),
 });
 
+const debugSessionFromRow = (r: DebugSessionRow): DebugSession => ({
+  id: r.id,
+  userEmail: r.user_email,
+  source: r.source as DebugSession["source"],
+  userAgent: r.user_agent,
+  ip: r.ip,
+  createdAt: Number(r.created_at),
+  lastEventAt: r.last_event_at !== null ? Number(r.last_event_at) : null,
+  eventCount: r.event_count,
+});
+
+const debugEventFromRow = (r: DebugEventRow): DebugEvent => ({
+  id: r.id,
+  sessionId: r.session_id,
+  ts: Number(r.ts),
+  level: r.level as DebugEvent["level"],
+  event: r.event,
+  message: r.message,
+  shareId: r.share_id,
+  payload: r.payload,
+});
+
+interface FlatEventRow extends DebugEventRow {
+  session_source: string;
+  session_user_email: string | null;
+}
+
+const flatEventFromRow = (r: FlatEventRow): FlatEvent => ({
+  ...debugEventFromRow(r),
+  source: r.session_source as SessionSource,
+  userEmail: r.session_user_email,
+});
+
 // ---------- factory ----------
 
 export async function createPostgresStore(url: string): Promise<DataStore> {
@@ -205,8 +202,7 @@ export async function createPostgresStore(url: string): Promise<DataStore> {
     onnotice: () => {}, // suppress IF NOT EXISTS notices on startup
   });
 
-  // Apply schema idempotently. sql.unsafe() is needed for multi-statement DDL.
-  await sql.unsafe(SCHEMA);
+  await migratePostgres(sql);
 
   return {
     users: {
@@ -385,6 +381,84 @@ export async function createPostgresStore(url: string): Promise<DataStore> {
           WHERE share_id = ${shareId} AND attempted_at >= ${sinceTimestamp}
         `;
         return Number(n);
+      },
+    },
+
+    debug: {
+      sessions: {
+        async create(input: CreateDebugSessionInput, when: number): Promise<DebugSession> {
+          const id = randomUUID();
+          await sql`
+            INSERT INTO debug_sessions (id, user_email, source, user_agent, ip, created_at)
+            VALUES (${id}, ${input.userEmail ?? null}, ${input.source},
+                    ${input.userAgent ?? null}, ${input.ip ?? null}, ${when})
+          `;
+          const [row] = await sql<DebugSessionRow[]>`
+            SELECT * FROM debug_sessions WHERE id = ${id}
+          `;
+          return debugSessionFromRow(row);
+        },
+        async get(id: string): Promise<DebugSession | null> {
+          const [row] = await sql<DebugSessionRow[]>`
+            SELECT * FROM debug_sessions WHERE id = ${id}
+          `;
+          return row ? debugSessionFromRow(row) : null;
+        },
+        async list(opts?: { limit?: number }): Promise<DebugSession[]> {
+          const limit = opts?.limit ?? 100;
+          const rows = await sql<DebugSessionRow[]>`
+            SELECT * FROM debug_sessions ORDER BY created_at DESC LIMIT ${limit}
+          `;
+          return rows.map(debugSessionFromRow);
+        },
+      },
+      events: {
+        async emit(input: EmitEventInput, when: number): Promise<DebugEvent> {
+          const id = randomUUID();
+          const payload = input.payload ?? {};
+          await sql`
+            INSERT INTO debug_events (id, session_id, ts, level, event, message, share_id, payload)
+            VALUES (${id}, ${input.sessionId}, ${when}, ${input.level},
+                    ${input.event}, ${input.message}, ${input.shareId ?? null},
+                    ${sql.json(payload as never)})
+          `;
+          await sql`
+            UPDATE debug_sessions
+            SET last_event_at = ${when}, event_count = event_count + 1
+            WHERE id = ${input.sessionId}
+          `;
+          return {
+            id, sessionId: input.sessionId, ts: when,
+            level: input.level, event: input.event, message: input.message,
+            shareId: input.shareId ?? null, payload,
+          };
+        },
+        async listBySession(sessionId: string): Promise<DebugEvent[]> {
+          const rows = await sql<DebugEventRow[]>`
+            SELECT * FROM debug_events WHERE session_id = ${sessionId} ORDER BY ts ASC
+          `;
+          return rows.map(debugEventFromRow);
+        },
+        async listRecent(opts?: ListEventsOpts): Promise<FlatEvent[]> {
+          const limit = Math.min(opts?.limit ?? 200, 500);
+          const conditions: string[] = [];
+          const values: unknown[] = [];
+          let i = 1;
+          if (opts?.shareId) { conditions.push(`e.share_id = $${i++}`); values.push(opts.shareId); }
+          if (opts?.sessionId) { conditions.push(`e.session_id = $${i++}`); values.push(opts.sessionId); }
+          if (opts?.level) { conditions.push(`e.level = $${i++}`); values.push(opts.level); }
+          if (opts?.source) { conditions.push(`s.source = $${i++}`); values.push(opts.source); }
+          values.push(limit);
+          const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+          const rows = await sql.unsafe<FlatEventRow[]>(`
+            SELECT e.*, s.source AS session_source, s.user_email AS session_user_email
+            FROM debug_events e
+            JOIN debug_sessions s ON s.id = e.session_id
+            ${where}
+            ORDER BY e.ts DESC LIMIT $${i}
+          `, values as Parameters<typeof sql.unsafe>[1]);
+          return rows.map(flatEventFromRow);
+        },
       },
     },
 

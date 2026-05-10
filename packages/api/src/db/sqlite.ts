@@ -4,81 +4,25 @@
  * this file and conform to the same DataStore interface.
  */
 import Database from "better-sqlite3";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
+import { migrateSqlite } from "./migrate.ts";
 import type {
+  CreateDebugSessionInput,
   CreateShareInput,
   DataStore,
+  DebugEvent,
+  DebugSession,
+  EmitEventInput,
+  FlatEvent,
+  ListEventsOpts,
   PasskeyCredential,
   RecoveryCode,
   Session,
+  SessionSource,
   Share,
   User,
 } from "./types.ts";
 
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS users (
-  email TEXT PRIMARY KEY,
-  created_at INTEGER NOT NULL,
-  has_passkey INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS passkey_credentials (
-  credential_id TEXT PRIMARY KEY,
-  email TEXT NOT NULL,
-  public_key BLOB NOT NULL,
-  counter INTEGER NOT NULL,
-  transports TEXT,
-  device_label TEXT,
-  created_at INTEGER NOT NULL,
-  last_used_at INTEGER,
-  FOREIGN KEY (email) REFERENCES users(email)
-);
-
-CREATE INDEX IF NOT EXISTS idx_passkey_email ON passkey_credentials(email);
-
-CREATE TABLE IF NOT EXISTS recovery_codes (
-  email TEXT PRIMARY KEY,
-  code_hash TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  consumed_at INTEGER,
-  FOREIGN KEY (email) REFERENCES users(email)
-);
-
-CREATE TABLE IF NOT EXISTS shares (
-  id TEXT PRIMARY KEY,
-  owner_email TEXT NOT NULL,
-  recipient_emails TEXT,
-  byte_length INTEGER NOT NULL,
-  created_at INTEGER NOT NULL,
-  expires_at INTEGER NOT NULL,
-  revoked_at INTEGER,
-  view_count INTEGER NOT NULL DEFAULT 0,
-  first_viewed_at INTEGER,
-  last_viewed_at INTEGER,
-  FOREIGN KEY (owner_email) REFERENCES users(email)
-);
-
-CREATE INDEX IF NOT EXISTS idx_shares_owner ON shares(owner_email);
-
-CREATE TABLE IF NOT EXISTS sessions (
-  token TEXT PRIMARY KEY,
-  email TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  expires_at INTEGER NOT NULL,
-  FOREIGN KEY (email) REFERENCES users(email)
-);
-
-CREATE INDEX IF NOT EXISTS idx_sessions_email ON sessions(email);
-
-CREATE TABLE IF NOT EXISTS verify_attempts (
-  share_id TEXT NOT NULL,
-  ip TEXT NOT NULL,
-  attempted_at INTEGER NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_verify_share_time
-  ON verify_attempts(share_id, attempted_at);
-`;
 
 interface UserRow {
   email: string;
@@ -122,6 +66,28 @@ interface SessionRow {
   email: string;
   created_at: number;
   expires_at: number;
+}
+
+interface DebugSessionRow {
+  id: string;
+  user_email: string | null;
+  source: string;
+  user_agent: string | null;
+  ip: string | null;
+  created_at: number;
+  last_event_at: number | null;
+  event_count: number;
+}
+
+interface DebugEventRow {
+  id: string;
+  session_id: string;
+  ts: number;
+  level: string;
+  event: string;
+  message: string;
+  share_id: string | null;
+  payload: string;
 }
 
 const userFromRow = (r: UserRow): User => ({
@@ -168,17 +134,44 @@ const sessionFromRow = (r: SessionRow): Session => ({
   expiresAt: r.expires_at,
 });
 
+const debugSessionFromRow = (r: DebugSessionRow): DebugSession => ({
+  id: r.id,
+  userEmail: r.user_email,
+  source: r.source as DebugSession["source"],
+  userAgent: r.user_agent,
+  ip: r.ip,
+  createdAt: r.created_at,
+  lastEventAt: r.last_event_at,
+  eventCount: r.event_count,
+});
+
+const debugEventFromRow = (r: DebugEventRow): DebugEvent => ({
+  id: r.id,
+  sessionId: r.session_id,
+  ts: r.ts,
+  level: r.level as DebugEvent["level"],
+  event: r.event,
+  message: r.message,
+  shareId: r.share_id,
+  payload: JSON.parse(r.payload) as Record<string, unknown>,
+});
+
+interface FlatEventRow extends DebugEventRow {
+  session_source: string;
+  session_user_email: string | null;
+}
+
+const flatEventFromRow = (r: FlatEventRow): FlatEvent => ({
+  ...debugEventFromRow(r),
+  source: r.session_source as SessionSource,
+  userEmail: r.session_user_email,
+});
+
 export function createSqliteStore(path: string): DataStore {
   const db = new Database(path);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
-  db.exec(SCHEMA);
-
-  // Rename recipient_email → recipient_emails (one-time migration for existing DBs)
-  const shareColumns = db.pragma("table_info(shares)") as Array<{ name: string }>;
-  if (shareColumns.some((c) => c.name === "recipient_email")) {
-    db.exec("ALTER TABLE shares RENAME COLUMN recipient_email TO recipient_emails");
-  }
+  migrateSqlite(db);
 
   // ---------- users ----------
   const insertUser = db.prepare(
@@ -266,6 +259,36 @@ export function createSqliteStore(path: string): DataStore {
     SELECT COUNT(*) AS n FROM verify_attempts
     WHERE share_id = ? AND attempted_at >= ?
   `);
+
+  // ---------- debug sessions ----------
+  const insertDebugSession = db.prepare(`
+    INSERT INTO debug_sessions (id, user_email, source, user_agent, ip, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  const getDebugSession = db.prepare(`SELECT * FROM debug_sessions WHERE id = ?`);
+  const listDebugSessions = db.prepare(`
+    SELECT * FROM debug_sessions ORDER BY created_at DESC LIMIT ?
+  `);
+
+  // ---------- debug events ----------
+  const insertDebugEvent = db.prepare(`
+    INSERT INTO debug_events (id, session_id, ts, level, event, message, share_id, payload)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const touchDebugSession = db.prepare(`
+    UPDATE debug_sessions SET last_event_at = ?, event_count = event_count + 1 WHERE id = ?
+  `);
+  const emitDebugEventTx = db.transaction(
+    (id: string, sessionId: string, ts: number, level: string, event: string,
+     message: string, shareId: string | null, payload: string) => {
+      insertDebugEvent.run(id, sessionId, ts, level, event, message, shareId, payload);
+      touchDebugSession.run(ts, sessionId);
+    },
+  );
+  const listDebugEventsBySession = db.prepare(`
+    SELECT * FROM debug_events WHERE session_id = ? ORDER BY ts ASC
+  `);
+  // listRecent uses a dynamic query — built inline to support filters
 
   return {
     users: {
@@ -380,6 +403,65 @@ export function createSqliteStore(path: string): DataStore {
       },
       async countRecent(shareId, sinceTimestamp) {
         return (countRecentVerify.get(shareId, sinceTimestamp) as { n: number }).n;
+      },
+    },
+
+    debug: {
+      sessions: {
+        async create(input: CreateDebugSessionInput, when: number): Promise<DebugSession> {
+          const id = randomUUID();
+          insertDebugSession.run(
+            id, input.userEmail ?? null, input.source,
+            input.userAgent ?? null, input.ip ?? null, when,
+          );
+          return debugSessionFromRow(getDebugSession.get(id) as DebugSessionRow);
+        },
+        async get(id: string): Promise<DebugSession | null> {
+          const row = getDebugSession.get(id) as DebugSessionRow | undefined;
+          return row ? debugSessionFromRow(row) : null;
+        },
+        async list(opts?: { limit?: number }): Promise<DebugSession[]> {
+          const rows = listDebugSessions.all(opts?.limit ?? 100) as DebugSessionRow[];
+          return rows.map(debugSessionFromRow);
+        },
+      },
+      events: {
+        async emit(input: EmitEventInput, when: number): Promise<DebugEvent> {
+          const id = randomUUID();
+          const payload = JSON.stringify(input.payload ?? {});
+          emitDebugEventTx(
+            id, input.sessionId, when, input.level, input.event,
+            input.message, input.shareId ?? null, payload,
+          );
+          return {
+            id, sessionId: input.sessionId, ts: when,
+            level: input.level, event: input.event, message: input.message,
+            shareId: input.shareId ?? null, payload: input.payload ?? {},
+          };
+        },
+        async listBySession(sessionId: string): Promise<DebugEvent[]> {
+          const rows = listDebugEventsBySession.all(sessionId) as DebugEventRow[];
+          return rows.map(debugEventFromRow);
+        },
+        async listRecent(opts?: ListEventsOpts): Promise<FlatEvent[]> {
+          const limit = Math.min(opts?.limit ?? 200, 500);
+          const conditions: string[] = [];
+          const params: unknown[] = [];
+          if (opts?.shareId) { conditions.push("e.share_id = ?"); params.push(opts.shareId); }
+          if (opts?.sessionId) { conditions.push("e.session_id = ?"); params.push(opts.sessionId); }
+          if (opts?.level) { conditions.push("e.level = ?"); params.push(opts.level); }
+          if (opts?.source) { conditions.push("s.source = ?"); params.push(opts.source); }
+          params.push(limit);
+          const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+          const rows = db.prepare(`
+            SELECT e.*, s.source AS session_source, s.user_email AS session_user_email
+            FROM debug_events e
+            JOIN debug_sessions s ON s.id = e.session_id
+            ${where}
+            ORDER BY e.ts DESC LIMIT ?
+          `).all(...params) as FlatEventRow[];
+          return rows.map(flatEventFromRow);
+        },
       },
     },
 

@@ -186,10 +186,12 @@ type FetchResult =
   | { kind: "network" }
   | { kind: "server"; status: number };
 
-async function fetchBlob(shareId: string): Promise<FetchResult> {
+async function fetchBlob(shareId: string, sid: string | null): Promise<FetchResult> {
   let r: Response;
   try {
-    r = await fetch(`${API_BASE}/blobs/${shareId}`);
+    r = await fetch(`${API_BASE}/blobs/${shareId}`, {
+      headers: sid ? { "X-Session-ID": sid } : {},
+    });
   } catch {
     return { kind: "network" };
   }
@@ -204,12 +206,14 @@ async function fetchBlob(shareId: string): Promise<FetchResult> {
   return { kind: "server", status: r.status };
 }
 
-async function postAccess(shareId: string, em: string): Promise<FetchResult> {
+async function postAccess(shareId: string, em: string, sid: string | null): Promise<FetchResult> {
   let r: Response;
   try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (sid) headers["X-Session-ID"] = sid;
     r = await fetch(`${API_BASE}/blobs/${shareId}/access`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ email: em }),
     });
   } catch {
@@ -235,6 +239,7 @@ const Viewer = () => {
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const emailRef = useRef<HTMLInputElement | null>(null);
   const keyBytesRef = useRef<Uint8Array | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
 
   // Initial mount: parse fragment, optionally auto-verify with a cached
   // email, otherwise GET the blob and either render or surface verify.
@@ -256,9 +261,22 @@ const Viewer = () => {
       keyBytesRef.current = keyBytes;
       history.replaceState(null, "", window.location.pathname);
 
+      // create a debug session for this viewer
+      try {
+        const s = await fetch(`${API_BASE}/sessions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source: "web" }),
+        });
+        const d = (await s.json()) as { id: string };
+        sessionIdRef.current = d.id;
+      } catch { /* non-critical */ }
+
+      const sid = sessionIdRef.current;
+
       const cached = readCachedEmail(id);
       if (cached) {
-        const result = await postAccess(id, cached);
+        const result = await postAccess(id, cached, sid);
         if (cancelled) return;
         if (result.kind === "ok") {
           await renderBytes(result.bytes);
@@ -273,7 +291,7 @@ const Viewer = () => {
         }
       }
 
-      const r = await fetchBlob(id);
+      const r = await fetchBlob(id, sid);
       if (cancelled) return;
       if (r.kind === "ok") {
         await renderBytes(r.bytes);
@@ -369,7 +387,7 @@ const Viewer = () => {
     setSubmitting(true);
     setInlineError(null);
 
-    const result = await postAccess(id, trimmed);
+    const result = await postAccess(id, trimmed, sessionIdRef.current);
     setSubmitting(false);
 
     if (result.kind === "ok") {
