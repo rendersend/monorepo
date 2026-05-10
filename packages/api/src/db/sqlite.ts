@@ -51,6 +51,7 @@ interface RecoveryRow {
 interface ShareRow {
   id: string;
   owner_email: string;
+  owner_user_id: string | null;
   recipient_emails: string | null;
   byte_length: number;
   created_at: number;
@@ -117,6 +118,7 @@ const recoveryFromRow = (r: RecoveryRow): RecoveryCode => ({
 const shareFromRow = (r: ShareRow): Share => ({
   id: r.id,
   ownerEmail: r.owner_email,
+  ownerUserId: r.owner_user_id,
   recipientEmails: r.recipient_emails ? r.recipient_emails.split(",") : null,
   byteLength: r.byte_length,
   createdAt: r.created_at,
@@ -218,8 +220,8 @@ export function createSqliteStore(path: string): DataStore {
   // ---------- shares ----------
   const insertShare = db.prepare(`
     INSERT INTO shares
-      (id, owner_email, recipient_emails, byte_length, created_at, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+      (id, owner_email, owner_user_id, recipient_emails, byte_length, created_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
   const getShare = db.prepare(`SELECT * FROM shares WHERE id = ?`);
   const countSharesByOwner = db.prepare(
@@ -352,6 +354,7 @@ export function createSqliteStore(path: string): DataStore {
         insertShare.run(
           input.id,
           input.ownerEmail,
+          input.ownerUserId ?? null,
           input.recipientEmails?.join(",") ?? null,
           input.byteLength,
           when,

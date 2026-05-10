@@ -33,6 +33,7 @@ export interface RecoveryCode {
 export interface Share {
   id: string;
   ownerEmail: string;
+  ownerUserId: string | null;
   recipientEmails: string[] | null;
   byteLength: number;
   createdAt: number;
@@ -46,6 +47,7 @@ export interface Share {
 export interface CreateShareInput {
   id: string;
   ownerEmail: string;
+  ownerUserId: string | null;
   recipientEmails: string[] | null;
   byteLength: number;
   expiresAt: number;

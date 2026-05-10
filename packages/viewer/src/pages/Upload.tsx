@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase, AUTH_MODE } from "@/lib/supabase";
 import {
   ArrowRight,
   Copy,
@@ -79,6 +81,7 @@ function recipientSubtitle(emails: string[]): string {
 }
 
 const Upload = () => {
+  const navigate = useNavigate();
   const [ownerEmail, setOwnerEmail] = useState("");
   const [recipientEmails, setRecipientEmails] = useState<string[]>([]);
   const [expiresIn, setExpiresIn] = useState("604800");
@@ -90,22 +93,33 @@ const Upload = () => {
   const [copied, setCopied] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const accessTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(OWNER_KEY);
-      if (saved) setOwnerEmail(saved);
-    } catch {}
+    const init = async () => {
+      if (AUTH_MODE === "supabase") {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) { navigate("/login", { replace: true }); return; }
+        accessTokenRef.current = session.access_token;
+        setOwnerEmail(session.user.email ?? "");
+      } else {
+        try {
+          const saved = localStorage.getItem(OWNER_KEY);
+          if (saved) setOwnerEmail(saved);
+        } catch {}
+      }
 
-    fetch(`${API_BASE}/sessions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source: "web" }),
-    })
-      .then((r) => r.json())
-      .then((d: { id: string }) => { sessionIdRef.current = d.id; })
-      .catch(() => {});
-  }, []);
+      fetch(`${API_BASE}/sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: "web" }),
+      })
+        .then((r) => r.json())
+        .then((d: { id: string }) => { sessionIdRef.current = d.id; })
+        .catch(() => {});
+    };
+    void init();
+  }, [navigate]);
 
   const acceptFile = (f: File): void => {
     if (!isHtmlFile(f)) {
@@ -148,9 +162,13 @@ const Upload = () => {
 
       const headers: Record<string, string> = {
         "Content-Type": "application/octet-stream",
-        "X-Owner-Email": owner,
         "X-Expires-In-Seconds": expiresIn,
       };
+      if (AUTH_MODE === "supabase" && accessTokenRef.current) {
+        headers["Authorization"] = `Bearer ${accessTokenRef.current}`;
+      } else {
+        headers["X-Owner-Email"] = owner;
+      }
       if (recipientEmails.length > 0) {
         headers["X-Recipient-Emails"] = recipientEmails.join(",");
       }
@@ -299,7 +317,7 @@ const Upload = () => {
                 <Field
                   id="owner-email"
                   label="Your email"
-                  hint="Used to track and manage your shares."
+                  hint={AUTH_MODE === "supabase" ? "Signed in via Google." : "Used to track and manage your shares."}
                 >
                   <Input
                     id="owner-email"
@@ -307,7 +325,8 @@ const Upload = () => {
                     autoComplete="email"
                     required
                     value={ownerEmail}
-                    onChange={(e) => setOwnerEmail(e.target.value)}
+                    onChange={(e) => { if (AUTH_MODE !== "supabase") setOwnerEmail(e.target.value); }}
+                    readOnly={AUTH_MODE === "supabase"}
                     placeholder="you@company.com"
                     className="h-10 rounded-[10px]"
                   />
