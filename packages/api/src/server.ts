@@ -26,6 +26,7 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { getStore } from "./db/store.ts";
 import { getBlobStore } from "./storage/blob.ts";
 import { initEvents, emit } from "./events.ts";
+import { AUTH_MODE, verifyBearerToken } from "./auth.ts";
 import type { EventLevel, SessionSource, Share } from "./db/types.ts";
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -77,7 +78,8 @@ app.use("*", cors({
   origin: process.env.CORS_ORIGIN ?? "*",
   allowMethods: ["GET", "POST", "OPTIONS"],
   allowHeaders: [
-    "Content-Type", "X-Owner-Email", "X-Recipient-Emails",
+    "Content-Type", "Authorization",
+    "X-Owner-Email", "X-Recipient-Emails",
     "X-Expires-In-Seconds", "X-Session-ID", "X-Source",
   ],
 }));
@@ -130,17 +132,32 @@ app.post("/sessions", async (c) => {
 app.post("/blobs", async (c) => {
   const sid = sessionId(c);
 
-  const ownerHeader = c.req.header("x-owner-email");
-  if (!ownerHeader) {
-    if (sid) await emit({ sessionId: sid, level: "warn", event: "request.validation_error",
-      message: "POST /blobs rejected — missing x-owner-email header", payload: {} });
-    return c.json({ error: "x-owner-email header required" }, 400);
-  }
-  const ownerEmail = normalizeEmail(ownerHeader);
-  if (!isValidEmail(ownerEmail)) {
-    if (sid) await emit({ sessionId: sid, level: "warn", event: "request.validation_error",
-      message: `POST /blobs rejected — invalid owner email "${ownerEmail}"`, payload: { ownerEmail } });
-    return c.json({ error: "invalid owner email" }, 400);
+  // Resolve owner identity — verified JWT in supabase mode, plain header otherwise.
+  let ownerEmail: string;
+  let ownerUserId: string | null = null;
+
+  if (AUTH_MODE === "supabase") {
+    const user = await verifyBearerToken(c.req.header("authorization"));
+    if (!user) {
+      if (sid) await emit({ sessionId: sid, level: "warn", event: "request.auth_error",
+        message: "POST /blobs rejected — missing or invalid bearer token", payload: {} });
+      return c.json({ error: "authentication required" }, 401);
+    }
+    ownerEmail = user.email;
+    ownerUserId = user.id;
+  } else {
+    const ownerHeader = c.req.header("x-owner-email");
+    if (!ownerHeader) {
+      if (sid) await emit({ sessionId: sid, level: "warn", event: "request.validation_error",
+        message: "POST /blobs rejected — missing x-owner-email header", payload: {} });
+      return c.json({ error: "x-owner-email header required" }, 400);
+    }
+    ownerEmail = normalizeEmail(ownerHeader);
+    if (!isValidEmail(ownerEmail)) {
+      if (sid) await emit({ sessionId: sid, level: "warn", event: "request.validation_error",
+        message: `POST /blobs rejected — invalid owner email "${ownerEmail}"`, payload: { ownerEmail } });
+      return c.json({ error: "invalid owner email" }, 400);
+    }
   }
 
   const recipientHeader = c.req.header("x-recipient-emails");
@@ -188,7 +205,7 @@ app.post("/blobs", async (c) => {
 
   await store.users.upsertAnonymous(ownerEmail, now);
   const share = await store.shares.create(
-    { id, ownerEmail, recipientEmails, byteLength: body.byteLength, expiresAt },
+    { id, ownerEmail, ownerUserId, recipientEmails, byteLength: body.byteLength, expiresAt },
     now,
   );
 
@@ -391,5 +408,5 @@ serve({ fetch: app.fetch, port: PORT }, (info) => {
   const db = process.env.RENDERSEND_DB ?? "sqlite";
   const blobStore = (process.env.BLOB_STORE ?? "fs").split(/\s/)[0];
   console.log(`[api] listening on http://localhost:${info.port}`);
-  console.log(`[api] db=${db}  blobs=${blobStore}  debug=${DEBUG_ENABLED}`);
+  console.log(`[api] db=${db}  blobs=${blobStore}  auth=${AUTH_MODE}  debug=${DEBUG_ENABLED}`);
 });
